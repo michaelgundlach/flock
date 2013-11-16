@@ -111,6 +111,14 @@ Element.prototype = {
   move: function(percent) {
     this.x += this.dx*percent;
     this.y += this.dy*percent;
+
+    // If you fell off the world, wrap.
+    if (this.world) {
+      this.x %= this.world.width;
+      this.y %= this.world.height;
+      if (this.x < 0) this.x += this.world.width;
+      if (this.y < 0) this.y += this.world.height;
+    }
   },
 
   // Return the distance to another Element.
@@ -144,12 +152,12 @@ BirdAi = {
     // max i am allowed to change my speed
     var dMax = 2.0;
     // Get an omniscient view of the average flock motion
-    var dxSum = 0, dySum = 0, numBirds = world.birds.length;
+    var dxSum = 0.0, dySum = 0.0, numBirds = world.birds.length;
     world.birds.forEach(function(b) { dxSum += b.dx; dySum += b.dy; });
-    var dxAvg = dxSum * 1.0 / numBirds, dyAvg = dySum * 1.0 / numBirds;
+    var dxAvg = dxSum / numBirds, dyAvg = dySum / numBirds;
     // Adjust our direction to be closer to the average
     var angleAvg = new Element(0,0, dxAvg,dyAvg).angle;
-    bird.turnTowards(angleAvg, .1);
+    bird.turnTowards(angleAvg, .01);
     var angleDiff = angleAvg + bird.angle;
     console.log("Bird " + bird.number + " (" +
       bird.dx + "," + bird.dy + ")");
@@ -209,7 +217,7 @@ function Engine(world, canvas, /* optional */ drawBird) {
   this.world = world;
   this.canvas = canvas;
   this.ctx = canvas.getContext('2d');
-  this.drawBird = drawBird || function(bird, ctx) {};
+  this.drawBird = drawBird || function() {};
 }
 Engine.prototype = {
   loopForever: function(n) {
@@ -229,7 +237,7 @@ Engine.prototype = {
   draw: function() {
     var that = this, ctx = that.ctx;
     ctx.clearRect(0,0, that.canvas.width, that.canvas.height);
-    this.world.birds.forEach(function(b) { that.drawBird(b, ctx); });
+    this.world.birds.forEach(function(b) { that.drawBird(b, ctx, that.canvas); });
   }
 };
 
@@ -260,9 +268,10 @@ Game = {
     };
     // TODO stop hardcoding
     for (var i = 0; i < 100; i++) {
-      birds.push(
-        new Bird(r(world.width),r(world.height),r(10)-5,r(10)-5,
-                 world, BirdAi.basicFlock));
+      var b = new Bird(r(world.width),r(world.height),1,1, world, BirdAi.basicFlock);
+      b.angle = r(Math.PI*2);
+      b.speed = r(1) + 2;
+      birds.push(b);
     }
 
     var drawBird = BirdArtists.boring;

@@ -52,6 +52,73 @@ Element.prototype = {
       this.dy - otherElement.dy,
       this.world
     );
+  },
+
+  // Return the angle component, in radians, of this Element's velocity.
+  // East=0, North=PI/2, WEST=PI, South=3/2PI.
+  get angle() {
+    // dx and dy are two sides of a right triangle.
+    // arctangent gives you the angle of the hypotenuse.
+    var angle = Math.atan2(this.dy, this.dx);
+
+    // atan2 returns 0..PI for north quadrants and -0..-PI for
+    // south quadrants.
+    if (angle < 0)
+      angle += Math.PI*2;
+    return angle;
+  },
+
+  // Set the angle of the Element's velocity without changing its speed.
+  // |value| is in radians.
+  set angle(value) {
+    // I've got a hypotenuse.
+    // I want a new hypotenuse of the same length at a new angle.
+
+    // sine and cosine of an angle give the length of the legs of the
+    // right triangle with that angle, assuming the hypotenuse length is 1.
+    var rise = Math.sin(value);
+    var run = Math.cos(value);
+    // OK, but we actually want a hypotenuse of length (this.speed), so we
+    // stretch rise and run out accordingly.  E.g. if speed is 2, we must
+    // double our rise and run to get a hypotenuse of length 2.
+    var speed = this.speed;
+    rise *= speed;
+    run *= speed;
+    this.dy = rise;
+    this.dx = run;
+  },
+
+  // Return the directionless speed component of this Element's velocity.
+  get speed() {
+    // dx and dy are two sides of a right triangle.
+    // the length of the hypotenuse is the speed.
+    // The Pythogorean theorem calculates this length: a*a+b*b=c*c.
+    var dx=this.dx, dy=this.dy;
+    return Math.sqrt(dx*dx + dy*dy);
+  },
+
+  set speed(value) {
+    // Our velocity is the hypotenuse of a right triangle.
+    // To change our speed, we just stretch the hypotenuse by stretching
+    // the other 2 legs.
+    var stretchRatio = value / this.speed;
+    this.dx *= stretchRatio;
+    this.dy *= stretchRatio;
+  },
+
+  // Move a percentage of the Element's current velocity, from 0 (no movement)
+  // to 1 (one full vector's worth.)
+  move: function(percent) {
+    this.x += this.dx*percent;
+    this.y += this.dy*percent;
+  },
+
+  // Return the distance to another Element.
+  distance: function(other) {
+    // The two points can be viewed as two ends of the hypotenuse of a
+    // right triangle.  See .speed() above for how to get its length.
+    var xLength = other.x - this.x, yLength = other.y - this.y;
+    return Math.sqrt(xLength*xLength + yLength*yLength);
   }
 };
 
@@ -80,22 +147,13 @@ BirdAi = {
     var dxSum = 0, dySum = 0, numBirds = world.birds.length;
     world.birds.forEach(function(b) { dxSum += b.dx; dySum += b.dy; });
     var dxAvg = dxSum * 1.0 / numBirds, dyAvg = dySum * 1.0 / numBirds;
-    // Adjust our motion to be closer to the average
-    // TODO: scale for ms
-    var oldDx = bird.dx, oldDy = bird.dy;
-    bird.dx += dMax* (bird.dx < dxAvg ? 1 : -1);
-    bird.dy += dMax* (bird.dy < dyAvg ? 1 : -1);
-    console.log("Bird " + bird.number + "(" + oldDx + "," + oldDy + ") -> (" +
+    // Adjust our direction to be closer to the average
+    var angleAvg = new Element(0,0, dxAvg,dyAvg).angle;
+    bird.turnTowards(angleAvg, .1);
+    var angleDiff = angleAvg + bird.angle;
+    console.log("Bird " + bird.number + " (" +
       bird.dx + "," + bird.dy + ")");
-
-    if (bird.x < 0 || bird.x > world.width)
-      bird.dx *= -1;
-    if (bird.y < 0 || bird.y > world.height)
-      bird.dy *= -1;
-
-    bird.x += bird.dx*5;
-    bird.y += bird.dy*5;
-
+    bird.move(1);
   }
 };
 
@@ -112,6 +170,21 @@ Bird.prototype = {
   step: function(ms, world) {
     this.ai(this, ms, world);
   },
+
+  // Change angle to be closer to the |heading| angle by a factor of
+  // |percent|.  |percent| is between 0 (no change) to 1 (perfect alignment.)
+  // We turn in the direction closest to heading.
+  turnTowards: function(heading, percent) {
+    var diff = heading - this.angle;
+    // If we'd have to rotate more than halfway counterclockwise,
+    // rotate the difference clockwise instead.
+    if (diff > Math.PI) {
+      diff = (Math.PI*2 - diff) * -1;
+    }
+    this.angle += diff * percent;
+    return this;
+  },
+
   __proto__: Element.prototype
 };
 
@@ -193,7 +266,8 @@ Game = {
     }
 
     var drawBird = BirdArtists.boring;
-    new Engine(world, canvas, drawBird).loopForever();
+    Game.engine = new Engine(world, canvas, drawBird);
+    Game.engine.loopForever();
   }
 };
 

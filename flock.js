@@ -159,8 +159,6 @@ BirdAi = {
     var angleAvg = new Element(0,0, dxAvg,dyAvg).angle;
     bird.turnTowards(angleAvg, .01);
     var angleDiff = angleAvg + bird.angle;
-    console.log("Bird " + bird.number + " (" +
-      bird.dx + "," + bird.dy + ")");
     bird.move(1);
   }
 };
@@ -223,7 +221,6 @@ Engine.prototype = {
   loopForever: function(n) {
     if (n === undefined) n = -1;
     if (n === 0) return;
-    console.log("LOOP " + n);
     var that = this;
     that.update(); 
     that.draw(); 

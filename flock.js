@@ -190,20 +190,15 @@ BirdAi = {
   basic: function(bird, ms, world) {
     // TODO figure out how far to move per ms
     bird.vel.dx = 0.2; bird.vel.dy = 0.2;
-    bird.pos.x += bird.dx;
-    bird.pos.y += bird.dy;
+    bird.move(1);
     console.log("Bird " + bird.number + " is sliding.");
   },
 
   basicFlock: function(bird, ms, world) {
     // Get an omniscient view of the average flock motion
-    var dxSum = 0.0, dySum = 0.0, numBirds = world.birds.length;
-    world.birds.forEach(function(b) { dxSum += b.vel.dx; dySum += b.vel.dy; });
-    var dxAvg = dxSum / numBirds, dyAvg = dySum / numBirds;
+    var velAvg = Vector.average(world.birds.map(function(b) { return b.vel; }));
     // Adjust our direction to be closer to the average
-    var angleAvg = new Vector({dx:dxAvg,dy:dyAvg}).angle;
-    bird.turnTowards(angleAvg, .01);
-    var angleDiff = angleAvg + bird.angle;
+    bird.turnTowards(velAvg.angle, .01);
     bird.move(1);
   },
 
@@ -215,8 +210,33 @@ BirdAi = {
 
     // Implementation:
     // find the birds around me.
-    // aim towards the center of that group.
-    // but aim away from any bird that is too close.
+    // If I'm too far from any birds, turn toward the closest bird.
+    // If I'm too close to any bird, turn away from the closest bird.
+    // Otherwise, turn to face the way the closest bird faces.
+    const RADIUS=100;
+    const TOOCLOSE=20;
+    const TOOFAR=60; 
+    const TURN_PERCENT_PER_SEC=.3;
+    const SECS = ms / 1000.0;
+    var guys = world.neighbors(bird, {radius: 100});
+    if (guys.length !== 0) {
+      var dist = function(guy) { return bird.pos.distance(guy.pos); };
+      var closest = guys.sort(function(a,b) { return dist(a) - dist(b); })[0];
+      var hisHeading = bird.pos.vectorTo(closest.pos).angle;
+      var newHeading;
+      if (closest.distance(bird) > TOOFAR) {
+        newHeading = hisHeading;
+      }
+      else if (closest.distance(bird) < TOOCLOSE) {
+        // Turn toward directly away from him
+        newHeading = hisHeading + Math.PI;
+      }
+      else {
+        newHeading = closest.vel.angle;
+      }
+      bird.turnTowards(newHeading, TURN_PERCENT_PER_SEC*SECS);
+    }
+    bird.move(SECS*50); // TODO temp increase
   },
 
   littleLoops: function(bird, ms, world) {
@@ -354,7 +374,7 @@ Game = {
     for (var i = 0; i < 100; i++) {
       var pos = new Point(r(world.width), r(world.height));
       var vel = new Vector({angle: r(Math.PI*2), length: r(1)+2});
-      var b = new Bird(pos, vel, world, BirdAi.neighborsAvgVelocity);
+      var b = new Bird(pos, vel, world, BirdAi.boids);
       birds.push(b);
     }
 

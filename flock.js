@@ -29,32 +29,47 @@ Bird objects with AI strategies.
 
 */
 
-//  A point in a world with position and velocity (position delta per unit time).
-function Element(x, y, dx, dy, /* optional */ world) {
-  this.x = x;
-  this.y = y;
-  this.dx = dx;
-  this.dy = dy;
-  this.world = world;
+function Point(x,y) {
+  this.x = x; this.y = y;
 }
-
-Element.prototype = {
-  placeIn: function(world) {
-    this.world = world;
+Point.average = function(points) {
+  var summer = function(a,b) { return a+b; }
+  var sumX = points.map(function(p) { return p.x; }).reduce(summer);
+  var sumY = points.map(function(p) { return p.y; }).reduce(summer);
+  return new Point(sumX/points.length, sumY/points.length);
+}
+Point.prototype = {
+  // Return the vector from this point to another point.
+  vectorTo: function(other) {
+    return new Vector({dx: other.x-this.x, dy:other.y-this.y});
   },
 
-  // a new Element with P&V relative to another Element.
-  relativeTo: function(otherElement) {
-    return new Element(
-      this.x - otherElement.x,
-      this.y - otherElement.y,
-      this.dx - otherElement.dx,
-      this.dy - otherElement.dy,
-      this.world
-    );
+  relativeTo: function(other) { 
+    return new Point(other.x - this.x, other.y - this.y);
   },
 
-  // Return the angle component, in radians, of this Element's velocity.
+  distance: function(other) {
+    return this.vectorTo(other).length;
+  },
+
+  plus: function(other) {
+    return new Point(this.x+other.x, this.y+other.y);
+  }
+};
+
+// An angle and a length.
+function Vector(config) {
+  if ('dx' in config) {
+    this.dx = config.dx; this.dy = config.dy;
+  }
+  else if ('angle' in config) {
+    this.dx = 1; this.dy = 0; // so that setting .angle works
+    this.angle = config.angle;
+    this.length = config.length;
+  }
+}
+Vector.prototype = {
+  // Return the angle component, in radians, of this Vector.
   // East=0, North=PI/2, WEST=PI, South=3/2PI.
   get angle() {
     // dx and dy are two sides of a right triangle.
@@ -68,7 +83,7 @@ Element.prototype = {
     return angle;
   },
 
-  // Set the angle of the Element's velocity without changing its speed.
+  // Set the angle of this Vector without changing its length.
   // |value| is in radians.
   set angle(value) {
     // I've got a hypotenuse.
@@ -78,55 +93,84 @@ Element.prototype = {
     // right triangle with that angle, assuming the hypotenuse length is 1.
     var rise = Math.sin(value);
     var run = Math.cos(value);
-    // OK, but we actually want a hypotenuse of length (this.speed), so we
-    // stretch rise and run out accordingly.  E.g. if speed is 2, we must
+    // OK, but we actually want a hypotenuse of length (this.length), so we
+    // stretch rise and run out accordingly.  E.g. if length is 2, we must
     // double our rise and run to get a hypotenuse of length 2.
-    var speed = this.speed;
-    rise *= speed;
-    run *= speed;
+    var length = this.length;
+    rise *= length;
+    run *= length;
     this.dy = rise;
     this.dx = run;
   },
 
-  // Return the directionless speed component of this Element's velocity.
-  get speed() {
+  // Return the length of this Vector.
+  get length() {
     // dx and dy are two sides of a right triangle.
-    // the length of the hypotenuse is the speed.
+    // the length of the hypotenuse is what we want.
     // The Pythogorean theorem calculates this length: a*a+b*b=c*c.
     var dx=this.dx, dy=this.dy;
     return Math.sqrt(dx*dx + dy*dy);
   },
 
-  set speed(value) {
-    // Our velocity is the hypotenuse of a right triangle.
-    // To change our speed, we just stretch the hypotenuse by stretching
+  set length(value) {
+    // Our length is the hypotenuse of a right triangle.
+    // To change our length, we just stretch the hypotenuse by stretching
     // the other 2 legs.
-    var stretchRatio = value / this.speed;
+    var stretchRatio = value / this.length;
     this.dx *= stretchRatio;
     this.dy *= stretchRatio;
+  },
+
+  minus: function(other) {
+    return new Vector({dx: this.dx - other.dx, dy: this.dy - other.dy});
+  }
+};
+
+//  A point with position (represented by a Point) and velocity (a Vector).
+function Element(pos, vel) {
+  this.pos = pos;
+  this.vel = vel;
+}
+Element.prototype = {
+  // a new Element with P&V relative to another Element.
+  relativeTo: function(otherElement) {
+    return new Element(
+      this.pos.relativeTo(otherElement.pos),
+      this.vel.minus(otherElement.vel)
+    );
+  },
+
+  // Return the angle component, in radians, of this Element's velocity.
+  // East=0, North=PI/2, WEST=PI, South=3/2PI.
+  get angle() {
+    return this.vel.angle;
+  },
+
+  // Set the angle of the Element's velocity without changing its speed.
+  // |value| is in radians.
+  set angle(value) {
+    this.vel.angle = value;
+  },
+
+  // Return the directionless speed component of this Element's velocity.
+  get speed() {
+    return this.vel.length;
+  },
+
+  set speed(value) {
+    this.vel.length = value;
   },
 
   // Move a percentage of the Element's current velocity, from 0 (no movement)
   // to 1 (one full vector's worth.)
   move: function(percent) {
-    this.x += this.dx*percent;
-    this.y += this.dy*percent;
-
-    // If you fell off the world, wrap.
-    if (this.world) {
-      this.x %= this.world.width;
-      this.y %= this.world.height;
-      if (this.x < 0) this.x += this.world.width;
-      if (this.y < 0) this.y += this.world.height;
-    }
+    this.pos.x += this.vel.dx*percent;
+    this.pos.y += this.vel.dy*percent;
   },
 
   // Return the distance to another Element.
   distance: function(other) {
-    // The two points can be viewed as two ends of the hypotenuse of a
-    // right triangle.  See .speed() above for how to get its length.
-    var xLength = other.x - this.x, yLength = other.y - this.y;
-    return Math.sqrt(xLength*xLength + yLength*yLength);
+    return other.pos.distance(this.pos);
   }
 };
 
@@ -138,35 +182,49 @@ BirdAi = {
 
   basic: function(bird, ms, world) {
     // TODO figure out how far to move per ms
-    bird.dx = 0.2; bird.dy = 0.2;
-    bird.x += bird.dx;
-    bird.y += bird.dy;
+    bird.vel.dx = 0.2; bird.vel.dy = 0.2;
+    bird.pos.x += bird.dx;
+    bird.pos.y += bird.dy;
     console.log("Bird " + bird.number + " is sliding.");
   },
 
   basicFlock: function(bird, ms, world) {
-    // Birds do 3 things
-    // 1. they try not to hit each other
-    // 2. they try to stay near each other
-    
-    // max i am allowed to change my speed
-    var dMax = 2.0;
     // Get an omniscient view of the average flock motion
     var dxSum = 0.0, dySum = 0.0, numBirds = world.birds.length;
-    world.birds.forEach(function(b) { dxSum += b.dx; dySum += b.dy; });
+    world.birds.forEach(function(b) { dxSum += b.vel.dx; dySum += b.vel.dy; });
     var dxAvg = dxSum / numBirds, dyAvg = dySum / numBirds;
     // Adjust our direction to be closer to the average
-    var angleAvg = new Element(0,0, dxAvg,dyAvg).angle;
+    var angleAvg = new Vector({dx:dxAvg,dy:dyAvg}).angle;
     bird.turnTowards(angleAvg, .01);
     var angleDiff = angleAvg + bird.angle;
     bird.move(1);
+  },
+
+  boids: function(bird, ms, world) {
+    // Birds do 3 things
+    // 1. they try not to hit each other
+    // 2. they try to stay near each other
+    // 3. they try to face the way their comrades face
+
+    // Implementation:
+    // find the birds around me.
+    // aim towards the center of that group.
+    // but aim away from any bird that is too close.
+  },
+
+  littleLoops: function(bird, ms, world) {
+    var neighbors = world.neighbors(bird, {radius: 100});
+    var avgPosition = Point.average(neighbors.map(function(n) { return n.pos; }));
+    var angleToThere = bird.pos.vectorTo(avgPosition).angle;
+    bird.turnTowards(angleToThere, .04);
+    bird.move(2);
   }
 };
 
 //  can examine other elements' P&Vs and
 //  can adjust its own P&V, but doesn't know how to draw itself.
-function Bird(x, y, dx, dy, /* optional */ world, /* optional */ ai) {
-  Element.call(this, x, y, dx, dy, world);
+function Bird(pos, vel, /* optional */ world, /* optional */ ai) {
+  Element.call(this, pos, vel, world);
   this.number = ++Bird.total;
   this.ai = ai || function() {};
 }
@@ -205,11 +263,27 @@ function World(width, height, birds) {
 World.prototype = {
   step: function(ms) {
     var that = this;
-    this.birds.forEach(function(b) { b.step(ms, that); });
+    this.birds.forEach(function(b) { 
+      b.step(ms, that); 
+      that.wrap(b.pos); // don't fall off the map.
+    });
+  },
+
+  // Modify Point to be on the world if it has fallen off.
+  wrap: function(point) {
+    point.x %= this.width;
+    point.y %= this.height;
+    if (point.x < 0) point.x += this.width;
+    if (point.y < 0) point.y += this.height;
+  },
+
+  // Return all birds within options.radius of |bird|
+  neighbors: function(bird, options) {
+    return this.birds.filter(function(b) { return b.distance(bird) < options.radius; });
   }
 };
 
-//  controller of world and drawing.
+//  controller of world, drawing, and animation.
 //  safe to replace its model or its drawing methods at any time.
 function Engine(world, canvas, /* optional */ drawBird) {
   this.world = world;
@@ -218,17 +292,18 @@ function Engine(world, canvas, /* optional */ drawBird) {
   this.drawBird = drawBird || function() {};
 }
 Engine.prototype = {
-  loopForever: function(n) {
-    if (n === undefined) n = -1;
-    if (n === 0) return;
+  loop: function(timestamp) {
+    this.update(timestamp);
+    this.draw(); 
     var that = this;
-    that.update(); 
-    that.draw(); 
-    requestAnimationFrame(function() { that.loopForever(n-1); });
+    requestAnimationFrame(function(timestamp) { that.loop(timestamp) });
   },
 
-  update: function() {
-    this.world.step();
+  update: function(timestamp) {
+    timestamp = timestamp || 0;
+    var increment = timestamp - (this.lastUpdate || timestamp);
+    this.lastUpdate = timestamp;
+    this.world.step(increment);
   },
 
   draw: function() {
@@ -238,19 +313,16 @@ Engine.prototype = {
   }
 };
 
-//  simulates the birds on some element
-function Game() {
-};
-
 BirdArtists = {
-  boring: function(bird, ctx) {
+  square: function(bird, ctx) {
     ctx.save();
     ctx.fillStye = 'rgb(0,0,0)';
-    ctx.fillRect(bird.x, bird.y, 10, 10);
+    ctx.fillRect(bird.pos.x, bird.pos.y, 10, 10);
     ctx.restore();
   }
 }
 
+//  simulates the birds on some element
 Game = {
   // TODO: messy_methods_to_get_parameters,_add/remove_birds,_etc
   go: function(element) {
@@ -265,15 +337,15 @@ Game = {
     };
     // TODO stop hardcoding
     for (var i = 0; i < 100; i++) {
-      var b = new Bird(r(world.width),r(world.height),1,1, world, BirdAi.basicFlock);
-      b.angle = r(Math.PI*2);
-      b.speed = r(1) + 2;
+      var pos = new Point(r(world.width), r(world.height));
+      var vel = new Vector({angle: r(Math.PI*2), length: r(1)+2});
+      var b = new Bird(pos, vel, world, BirdAi.littleLoops);
       birds.push(b);
     }
 
-    var drawBird = BirdArtists.boring;
+    var drawBird = BirdArtists.square;
     Game.engine = new Engine(world, canvas, drawBird);
-    Game.engine.loopForever();
+    Game.engine.loop();
   }
 };
 

@@ -32,11 +32,11 @@ Bird objects with AI strategies.
 function Point(x,y) {
   this.x = x; this.y = y;
 }
-Point.average = function(points) {
+Point.average = function(list) {
   var summer = function(a,b) { return a+b; }
-  var sumX = points.map(function(p) { return p.x; }).reduce(summer);
-  var sumY = points.map(function(p) { return p.y; }).reduce(summer);
-  return new Point(sumX/points.length, sumY/points.length);
+  var sumX = list.map(function(el) { return el.x; }).reduce(summer);
+  var sumY = list.map(function(el) { return el.y; }).reduce(summer);
+  return new Point(sumX/list.length, sumY/list.length);
 }
 Point.prototype = {
   // Return the vector from this point to another point.
@@ -67,6 +67,13 @@ function Vector(config) {
     this.angle = config.angle;
     this.length = config.length;
   }
+}
+Vector.average = function(list) {
+  // TODO: looks an awful lot like Point.average
+  var summer = function(a,b) { return a+b; }
+  var sumX = list.map(function(el) { return el.dx; }).reduce(summer);
+  var sumY = list.map(function(el) { return el.dy; }).reduce(summer);
+  return new Vector({dx:sumX/list.length, dy:sumY/list.length});
 }
 Vector.prototype = {
   // Return the angle component, in radians, of this Vector.
@@ -218,6 +225,14 @@ BirdAi = {
     var angleToThere = bird.pos.vectorTo(avgPosition).angle;
     bird.turnTowards(angleToThere, .04);
     bird.move(2);
+  },
+
+  neighborsAvgVelocity: function(bird, ms, world) {
+    var neighbors = world.neighbors(bird, {radius: 100});
+    var avgVel = Vector.average(neighbors.map(function(n) { return n.vel; }));
+    bird.turnTowards(avgVel.angle, .04);
+    bird.vel.length = (bird.vel.length * 99 + avgVel.length) / 100;
+    bird.move(2);
   }
 };
 
@@ -339,7 +354,7 @@ Game = {
     for (var i = 0; i < 100; i++) {
       var pos = new Point(r(world.width), r(world.height));
       var vel = new Vector({angle: r(Math.PI*2), length: r(1)+2});
-      var b = new Bird(pos, vel, world, BirdAi.littleLoops);
+      var b = new Bird(pos, vel, world, BirdAi.neighborsAvgVelocity);
       birds.push(b);
     }
 

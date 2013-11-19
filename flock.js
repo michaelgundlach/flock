@@ -182,27 +182,26 @@ Element.prototype = {
 };
 
 BirdAi = {
-  dead: function(bird, ms, world) {
+  dead: function(bird, secs, world) {
     // dead bird: don't move.
     console.log("Bird " + bird.number + " is dead");
   },
 
-  basic: function(bird, ms, world) {
-    // TODO figure out how far to move per ms
+  basic: function(bird, secs, world) {
     bird.vel.dx = 0.2; bird.vel.dy = 0.2;
-    bird.move(1);
+    bird.move(secs);
     console.log("Bird " + bird.number + " is sliding.");
   },
 
-  basicFlock: function(bird, ms, world) {
+  basicFlock: function(bird, secs, world) {
     // Get an omniscient view of the average flock motion
     var velAvg = Vector.average(world.birds.map(function(b) { return b.vel; }));
     // Adjust our direction to be closer to the average
     bird.turnTowards(velAvg.angle, .01);
-    bird.move(1);
+    bird.move(secs);
   },
 
-  boids: function(bird, ms, world) {
+  boids: function(bird, secs, world) {
     // Birds do 3 things
     // 1. they try not to hit each other
     // 2. they try to stay near each other
@@ -217,7 +216,6 @@ BirdAi = {
     const TOOCLOSE=20;
     const TOOFAR=60; 
     const TURN_PERCENT_PER_SEC=.3;
-    const SECS = ms / 1000.0;
     var guys = world.neighbors(bird, {radius: 100});
     if (guys.length !== 0) {
       var dist = function(guy) { return bird.pos.distance(guy.pos); };
@@ -234,25 +232,25 @@ BirdAi = {
       else {
         newHeading = closest.vel.angle;
       }
-      bird.turnTowards(newHeading, TURN_PERCENT_PER_SEC*SECS);
+      bird.turnTowards(newHeading, TURN_PERCENT_PER_SEC*secs);
     }
-    bird.move(SECS*50); // TODO temp increase
+    bird.move(secs);
   },
 
-  littleLoops: function(bird, ms, world) {
+  littleLoops: function(bird, secs, world) {
     var neighbors = world.neighbors(bird, {radius: 100});
     var avgPosition = Point.average(neighbors.map(function(n) { return n.pos; }));
     var angleToThere = bird.pos.vectorTo(avgPosition).angle;
     bird.turnTowards(angleToThere, .04);
-    bird.move(2);
+    bird.move(secs);
   },
 
-  neighborsAvgVelocity: function(bird, ms, world) {
+  neighborsAvgVelocity: function(bird, secs, world) {
     var neighbors = world.neighbors(bird, {radius: 100});
     var avgVel = Vector.average(neighbors.map(function(n) { return n.vel; }));
     bird.turnTowards(avgVel.angle, .04);
     bird.vel.length = (bird.vel.length * 99 + avgVel.length) / 100;
-    bird.move(2);
+    bird.move(secs);
   }
 };
 
@@ -265,9 +263,9 @@ function Bird(pos, vel, /* optional */ world, /* optional */ ai) {
 }
 Bird.total = 0;
 Bird.prototype = {
-  // Step forward ms milliseconds.
-  step: function(ms, world) {
-    this.ai(this, ms, world);
+  // Step forward secs seconds.
+  step: function(secs, world) {
+    this.ai(this, secs, world);
   },
 
   // Change angle to be closer to the |heading| angle by a factor of
@@ -296,10 +294,10 @@ function World(width, height, birds) {
   this.birds = birds;
 }
 World.prototype = {
-  step: function(ms) {
+  step: function(secs) {
     var that = this;
     this.birds.forEach(function(b) { 
-      b.step(ms, that); 
+      b.step(secs, that); 
       that.wrap(b.pos); // don't fall off the map.
     });
   },
@@ -314,7 +312,9 @@ World.prototype = {
 
   // Return all birds within options.radius of |bird|
   neighbors: function(bird, options) {
-    return this.birds.filter(function(b) { return b.distance(bird) < options.radius; });
+    return this.birds.filter(function(b) { 
+      return b.distance(bird) < options.radius && b !== bird;
+    });
   }
 };
 
@@ -336,9 +336,10 @@ Engine.prototype = {
 
   update: function(timestamp) {
     timestamp = timestamp || 0;
-    var increment = timestamp - (this.lastUpdate || timestamp);
+    var incrementMs = timestamp - (this.lastUpdate || timestamp);
+    var incrementSecs = incrementMs / 1000;
     this.lastUpdate = timestamp;
-    this.world.step(increment);
+    this.world.step(incrementSecs);
   },
 
   draw: function() {
@@ -373,8 +374,8 @@ Game = {
     // TODO stop hardcoding
     for (var i = 0; i < 100; i++) {
       var pos = new Point(r(world.width), r(world.height));
-      var vel = new Vector({angle: r(Math.PI*2), length: r(1)+2});
-      var b = new Bird(pos, vel, world, BirdAi.boids);
+      var vel = new Vector({angle: r(Math.PI*2), length: r(50)+20});
+      var b = new Bird(pos, vel, world, BirdAi.littleLoops);
       birds.push(b);
     }
 

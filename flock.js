@@ -239,17 +239,21 @@ BirdAi = {
 
   littleLoops: function(bird, secs, world) {
     var neighbors = world.neighbors(bird, {radius: 100});
-    var avgPosition = Point.average(neighbors.map(function(n) { return n.pos; }));
-    var angleToThere = bird.pos.vectorTo(avgPosition).angle;
-    bird.turnTowards(angleToThere, .04);
+    if (neighbors.length > 0) {
+      var avgPosition = Point.average(neighbors.map(function(n) { return n.pos; }));
+      var angleToThere = bird.pos.vectorTo(avgPosition).angle;
+      bird.turnTowards(angleToThere, .04);
+    }
     bird.move(secs);
   },
 
   neighborsAvgVelocity: function(bird, secs, world) {
     var neighbors = world.neighbors(bird, {radius: 100});
-    var avgVel = Vector.average(neighbors.map(function(n) { return n.vel; }));
-    bird.turnTowards(avgVel.angle, .04);
-    bird.vel.length = (bird.vel.length * 99 + avgVel.length) / 100;
+    if (neighbors.length !== 0) {
+      var avgVel = Vector.average(neighbors.map(function(n) { return n.vel; }));
+      bird.turnTowards(avgVel.angle, .04);
+      bird.vel.length = (bird.vel.length * 99 + avgVel.length) / 100;
+    }
     bird.move(secs);
   }
 };
@@ -375,7 +379,7 @@ Game = {
     for (var i = 0; i < 100; i++) {
       var pos = new Point(r(world.width), r(world.height));
       var vel = new Vector({angle: r(Math.PI*2), length: r(50)+20});
-      var b = new Bird(pos, vel, world, BirdAi.littleLoops);
+      var b = new Bird(pos, vel, world, BirdAi.neighborsAvgVelocity);
       birds.push(b);
     }
 

@@ -201,6 +201,17 @@ BirdAi = {
     bird.move(secs);
   },
 
+  loops: function(bird, secs, world) {
+    // See why they always circle counterclockwise.
+    var neighbors = world.neighbors(bird, {radius: 10000});
+    if (neighbors.length > 0) {
+      var avgPosition = Point.average(neighbors.map(function(n) { return n.pos; }));
+      var angleToThere = bird.pos.vectorTo(avgPosition).angle;
+      bird.turnTowards(angleToThere, .02);
+    }
+    bird.move(secs);
+  },
+
   boids: function(bird, secs, world) {
     // Birds do 3 things
     // 1. they try not to hit each other
@@ -214,8 +225,8 @@ BirdAi = {
     // Otherwise, turn to face the way the closest bird faces.
     const RADIUS=100;
     const TOOCLOSE=20;
-    const TOOFAR=60; 
-    const TURN_PERCENT_PER_SEC=.3;
+    const TOOFAR=40; 
+    const TURN_PERCENT_PER_SEC=.4;
     var guys = world.neighbors(bird, {radius: 100});
     if (guys.length !== 0) {
       var dist = function(guy) { return bird.pos.distance(guy.pos); };
@@ -260,7 +271,7 @@ BirdAi = {
 
 //  can examine other elements' P&Vs and
 //  can adjust its own P&V, but doesn't know how to draw itself.
-function Bird(pos, vel, /* optional */ world, /* optional */ ai) {
+function Bird(pos, vel, world, /* optional */ ai) {
   Element.call(this, pos, vel, world);
   this.number = ++Bird.total;
   this.ai = ai || function() {};
@@ -276,11 +287,13 @@ Bird.prototype = {
   // |percent|.  |percent| is between 0 (no change) to 1 (perfect alignment.)
   // We turn in the direction closest to heading.
   turnTowards: function(heading, percent) {
+    if (heading < this.angle)
+      heading += Math.PI*2;
     var diff = heading - this.angle;
     // If we'd have to rotate more than halfway counterclockwise,
     // rotate the difference clockwise instead.
-    if (diff > Math.PI) {
-      diff = (Math.PI*2 - diff) * -1;
+    if (diff >= Math.PI) {
+      diff = (diff - Math.PI*2);
     }
     this.angle += diff * percent;
     return this;
@@ -379,7 +392,7 @@ Game = {
     for (var i = 0; i < 100; i++) {
       var pos = new Point(r(world.width), r(world.height));
       var vel = new Vector({angle: r(Math.PI*2), length: r(50)+20});
-      var b = new Bird(pos, vel, world, BirdAi.neighborsAvgVelocity);
+      var b = new Bird(pos, vel, world, BirdAi.boids);
       birds.push(b);
     }
 

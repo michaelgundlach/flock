@@ -52,10 +52,13 @@ Point.prototype = {
     return this.vectorTo(other).length;
   },
 
-  plus: function(other) {
-    return new Point(this.x+other.x, this.y+other.y);
+  // Return the point that you get when you start at this point and move by the
+  // given vector.
+  offsetBy: function(vector) {
+    return new Point(this.x+vector.dx, this.y+vector.dy);
   }
 };
+
 
 // An angle and a length.
 function Vector(config) {
@@ -212,7 +215,7 @@ BirdAi = {
     bird.move(secs);
   },
 
-  boids: function(bird, secs, world) {
+  boidsAttempt1: function(bird, secs, world) {
     // Birds do 3 things
     // 1. they try not to hit each other
     // 2. they try to stay near each other
@@ -244,6 +247,64 @@ BirdAi = {
         newHeading = closest.vel.angle;
       }
       bird.turnTowards(newHeading, TURN_PERCENT_PER_SEC*secs);
+    }
+    bird.move(secs);
+  },
+
+  boids: function(bird, secs, world) {
+    // Implemented after reading the actual heuristics that the famous boids
+    // use.
+
+    // Birds do 3 things
+    // 1. they try not to hit each other
+    // 2. they try to stay near each other
+    // 3. they try to face the way their comrades face
+
+    // Implementation:
+    // Find the birds around me.
+    // Find average vector to other birds; steer away from it.
+    // Find average location of other birds; steer towards it.
+    // Find average direction of other birds; steer towards it.
+    // Average these with random weights per bird (idea copied from some
+    // internet boids implementation.)
+    
+    if (bird.weights === undefined) {
+      bird.weights = [Math.random()+10, Math.random()+10, Math.random()+10];
+//      bird.weights = [.11, .1, .1];
+    }
+
+    var guys = world.visibleNeighbors(bird);
+
+    if (guys.length > 0) {
+
+      // Get three angles influencing our decision.
+      var angles = [];
+      
+      var separationVector = Vector.average(
+        guys.map(function(g) { return bird.pos.vectorTo(g.pos); })
+      );
+      // head directly *away* from them
+      separationVector.angle += Math.PI;
+      angles.push(separationVector.angle);
+
+      var avgLocation = Point.average(
+        guys.map(function(g) { return g.pos; })
+      );
+      angles.push(bird.pos.vectorTo(avgLocation).angle);
+
+      var headingAngle = Vector.average(
+        guys.map(function(g) { return g.vel; })
+      ).angle;
+      angles.push(headingAngle);
+
+      // Average these guys with random weights
+      var finalAngle = Vector.average([
+        new Vector({angle: angles[0], length: bird.weights[0]}),
+        new Vector({angle: angles[1], length: bird.weights[1]}),
+        new Vector({angle: angles[2], length: bird.weights[2]}),
+      ]).angle;
+
+      bird.turnTowards(finalAngle, .1);
     }
     bird.move(secs);
   },
@@ -311,7 +372,8 @@ function World(width, height, birds) {
   this.birds = birds;
 }
 World.prototype = {
-  step: function(secs) {
+  step: function(timestamp, secs) {
+    this.timestamp = timestamp;
     var that = this;
     this.birds.forEach(function(b) { 
       b.step(secs, that); 
@@ -331,6 +393,39 @@ World.prototype = {
   neighbors: function(bird, options) {
     return this.birds.filter(function(b) { 
       return b.distance(bird) < options.radius && b !== bird;
+    });
+  },
+
+  visibleNeighbors: function(bird) {
+    // TODO: This function hardcodes how well the birds can see.
+    // It should be part of the BirdAi object instead.  For now
+    // a BirdAi is just a function and I suspect YAGNI, so I'll
+    // keep it hardcoded for now.
+    var sightLengthPx = 75;
+    var fieldOfViewPerEye = Math.PI * 3/8; // Math.PI == 100% vision
+
+    var halfSLPx = sightLengthPx / 2;
+    if (this.visibleNeighbors.gridUpdatedAt !== this.timestamp) {
+      this.visibleNeighbors.gridUpdatedAt = this.timestamp;
+      var that = this;
+      this.birds.forEach(function(b) {
+        b.grid = {
+          x: Math.floor(b.pos.x / sightLengthPx),
+          y: Math.floor(b.pos.y / sightLengthPx)
+        };
+      });
+    }
+    return this.birds.filter(function(b) {
+      // Optimization for fun: each bird is in a grid square.  Ignore birds
+      // more than two orthogonal grid squares away.  Only matters with several
+      // hundred birds.
+      if (Math.abs(bird.grid.x - b.grid.x) + Math.abs(bird.grid.y - b.grid.y) > 2)
+        return false;
+ 
+      var vector = bird.pos.vectorTo(b.pos);
+      if (vector.length > sightLengthPx) return false;
+      if (Math.abs(vector.angle - bird.vel.angle) > fieldOfViewPerEye) return false;
+      return true;
     });
   }
 };
@@ -356,7 +451,7 @@ Engine.prototype = {
     var incrementMs = timestamp - (this.lastUpdate || timestamp);
     var incrementSecs = incrementMs / 1000;
     this.lastUpdate = timestamp;
-    this.world.step(incrementSecs);
+    this.world.step(this.lastUpdate, incrementSecs);
   },
 
   draw: function() {
@@ -367,12 +462,53 @@ Engine.prototype = {
 };
 
 BirdArtists = {
-  square: function(bird, ctx) {
+  squareBody: function(bird, ctx) {
     ctx.save();
     ctx.fillStye = 'rgb(0,0,0)';
-    ctx.fillRect(bird.pos.x, bird.pos.y, 10, 10);
+    ctx.fillRect(bird.pos.x-5, bird.pos.y-5, 10, 10);
     ctx.restore();
+  },
+
+  velocityLine: function(bird, ctx) {
+    ctx.save();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgb(0, 0, 255)';
+    ctx.beginPath();
+    ctx.moveTo(bird.pos.x, bird.pos.y);
+    var vel = new Vector({dx: bird.vel.dx, dy: bird.vel.dy});
+    vel.length /= 4;
+    var endpoint = bird.pos.offsetBy(vel);
+    ctx.lineTo(endpoint.x, endpoint.y);
+    ctx.stroke();
+    ctx.restore();
+  },
+
+  nearby: function(bird, ctx) {
+    ctx.save();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgb(0, 255, 255)';
+    ctx.beginPath();
+    ctx.arc(bird.pos.x, bird.pos.y, 
+            75 /* hardcoded in visibleNeighbors */,
+            bird.vel.angle - Math.PI*3/8 /* ditto */,
+            bird.vel.angle + Math.PI*3/8 /* ditto */);
+    ctx.stroke();
+    ctx.restore();
+  },
+
+  include: function(options) {
+    return function(bird, ctx) {
+      ctx.save();
+      if (options.body)
+        BirdArtists.squareBody(bird, ctx);
+      if (options.velocity)
+        BirdArtists.velocityLine(bird, ctx);
+      if (options.nearby)
+        BirdArtists.nearby(bird, ctx);
+      ctx.restore();
+    }
   }
+
 }
 
 //  simulates the birds on some element
@@ -389,14 +525,22 @@ Game = {
       return parseInt(Math.random() * n);
     };
     // TODO stop hardcoding
-    for (var i = 0; i < 100; i++) {
+    var numBirds = 100;
+    var makeVelocity = function() {
+      return new Vector({
+        angle: r(Math.PI*2), // random
+        length: 100
+      });
+    };
+    var ai = BirdAi.boids;
+
+    for (var i = 0; i < numBirds; i++) {
       var pos = new Point(r(world.width), r(world.height));
-      var vel = new Vector({angle: r(Math.PI*2), length: r(50)+20});
-      var b = new Bird(pos, vel, world, BirdAi.boids);
+      var b = new Bird(pos, makeVelocity(), world, ai);
       birds.push(b);
     }
 
-    var drawBird = BirdArtists.square;
+    var drawBird = BirdArtists.include({body: true, velocity: true, nearby: true});
     Game.engine = new Engine(world, canvas, drawBird);
     Game.engine.loop();
   }

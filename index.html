@@ -5,10 +5,27 @@
     <script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.10.2/jquery.min.js"></script>
   </head>
   <body>
-    <canvas width="1000" height="900"></canvas>
+    <input type="button" id="btnPause" value="Pause/Unpause"/>
+    Show what birds are thinking:
+    <input type="radio" name="btnDebug" value="show"/> Yes
+    <input type="radio" name="btnDebug" value="hide" checked/> No
+    <br>
+    <canvas width="1000" height="800"></canvas>
     <script src="flock.js"></script>
     <script>
       flock(document.querySelector('canvas'));
+      $("#btnPause").click(function() {
+        if (Game.paused)
+          Game.unpause();
+        else
+          Game.pause();
+      });
+      $("[name='btnDebug']").click(function() {
+        if ($("[name='btnDebug']:checked").val() === 'show')
+          Game.engine.drawBird = BirdArtists.include({body: true, velocity: true, fieldOfView: true, vectors: true});
+        else
+          Game.engine.drawBird = BirdArtists.include({body: false, velocity: true, fieldOfView: false, vectors: false});
+      });
     </script>
   </body>
 </html>
